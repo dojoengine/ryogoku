@@ -1,19 +1,27 @@
 # DoJo
 
 
-## Hacking
+## Dojo Operator
 
-### Project structure
+The project uses a Kubernetes Operator to schedule all the different components.
 
-```ml
-manifests/
-├── crds
-│   └── dojo.yml: "dojo custom resource"
-├── operator.yml: "operator deployment"
-└── rbac.yml: "operator permission configuration"
-src/
-└── main.ts: "k8s operator entry point"
+The first step is to install the Custom Resource Definition (CRD) into your cluster.
+
+You can do that using the `dojo` cli tool, in two different ways.
+
+ - Print the CRD to stdout and use `kubectl apply`
+
+```txt
+$ dojo crd print | kubectl apply -f -
 ```
+
+ - Install directly from the cli.
+
+```txt
+$ dojo crd install
+```
+
+## Hacking
 
 
 ### Development environment setup
@@ -22,7 +30,7 @@ Start by creating a local k8s cluster, for example using [kind](https://kind.sig
 In this case, we save the kube configuration file to `kube`.
 
 ```txt
-$ kind cluster create --kubeconfig kube
+$ kind create cluster --kubeconfig kube
 
 Creating cluster "kind" ...
  ✓ Ensuring node image (kindest/node:v1.25.3) 🖼
@@ -50,15 +58,9 @@ CoreDNS is running at https://127.0.0.1:34461/api/v1/namespaces/kube-system/serv
 To further debug and diagnose cluster problems, use 'kubectl cluster-info dump'.
 ```
 
-### Dojo Custom Resource Definition (CRD)
+You can set the `KUBECONFIG` env variable to automatically use the local cluster:
 
-The `Dojo` CRD is defined in `manifests/crds/dojo.yml`. The development workflow is usually:
-
-- Delete any existing `dojo` resource. You can get a list with `kubectl --kubeconfig kube get dojo -A`.
-- Delete the existing dojo crd with `kubectl --kubeconfig kube delete crd dojos.dojo-on-chain.com`.
-- Apply the new crd with `kubectl --kubeconfig kube apply -f manifists/crds/dojo.yml`.
-
-
-### Dojo Operator
-
-TODO
+```txt
+$ export KUBECONFIG=$(pwd)/kube
+$ kubectl cluster-info
+```
