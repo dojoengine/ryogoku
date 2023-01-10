@@ -1,0 +1,10 @@
+[package]
+name = "dojo-cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.68"
+clap = { version = "4.0.32", features = ["env", "unicode", "cargo"] }
+dojo-operator = { path = "../operator" }
+serde_yaml = "0.9.16"
