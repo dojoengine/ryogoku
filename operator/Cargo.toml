@@ -1,14 +1,14 @@
 [package]
-name = "dojo-operator"
+name = "ryogoku-operator"
 version = "0.1.0"
 edition = "2021"
 
 [lib]
-name = "dojo_operator"
+name = "ryogoku_operator"
 path = "src/lib.rs"
 
 [[bin]]
-name = "dojo-operator"
+name = "ryogoku-operator"
 path = "src/bin.rs"
 
 [dependencies]

@@ -1,24 +1,24 @@
-# DoJo
+# Ryogoku
 
 
-## Dojo Operator
+## Ryogoku Operator
 
 The project uses a Kubernetes Operator to schedule all the different components.
 
 The first step is to install the Custom Resource Definition (CRD) into your cluster.
 
-You can do that using the `dojo` cli tool, in two different ways.
+You can do that using the `ryogoku` cli tool, in two different ways.
 
  - Print the CRD to stdout and use `kubectl apply`
 
 ```txt
-$ dojo crd print | kubectl apply -f -
+$ ryogoku crd print | kubectl apply -f -
 ```
 
  - Install directly from the cli.
 
 ```txt
-$ dojo crd install
+$ ryogoku crd install
 ```
 
 ## Hacking

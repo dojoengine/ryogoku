@@ -268,29 +268,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "dojo"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "dojo-operator",
- "serde_yaml 0.9.16",
- "tokio",
-]
-
-[[package]]
-name = "dojo-operator"
-version = "0.1.0"
-dependencies = [
- "k8s-openapi",
- "kube",
- "schemars",
- "serde",
- "serde_json",
- "serde_yaml 0.9.16",
-]
-
-[[package]]
 name = "dyn-clone"
 version = "1.0.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1154,6 +1131,29 @@ dependencies = [
  "libc",
  "linux-raw-sys",
  "windows-sys",
+]
+
+[[package]]
+name = "ryogoku"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "ryogoku-operator",
+ "serde_yaml 0.9.16",
+ "tokio",
+]
+
+[[package]]
+name = "ryogoku-operator"
+version = "0.1.0"
+dependencies = [
+ "k8s-openapi",
+ "kube",
+ "schemars",
+ "serde",
+ "serde_json",
+ "serde_yaml 0.9.16",
 ]
 
 [[package]]

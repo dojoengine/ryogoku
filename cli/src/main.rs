@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use dojo_operator::{
+use ryogoku_operator::{
     k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition,
     kube::{
         api::{Api, PostParams},
@@ -11,14 +11,14 @@ use dojo_operator::{
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
-struct DojoCli {
+struct RyogokuCli {
     #[command(subcommand)]
-    command: DojoCommand,
+    command: RyogokuCommand,
 }
 
 #[derive(Subcommand)]
-enum DojoCommand {
-    /// Manage Dojo CRDs
+enum RyogokuCommand {
+    /// Manage Ryogoku CRDs
     Crd {
         #[command(subcommand)]
         command: CrdCommand,
@@ -67,7 +67,7 @@ async fn crd(command: CrdCommand) -> Result<()> {
                 Ok(_) => {
                     println!(" 📦 CRD installed.");
                     println!();
-                    println!("Thanks for using Dojo 🕹");
+                    println!("Thanks for using Ryogoku 🕹");
                     Ok(())
                 }
                 Err(err) => {
@@ -82,9 +82,9 @@ async fn crd(command: CrdCommand) -> Result<()> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let cli = DojoCli::parse();
+    let cli = RyogokuCli::parse();
 
     match cli.command {
-        DojoCommand::Crd { command } => crd(command).await,
+        RyogokuCommand::Crd { command } => crd(command).await,
     }
 }
