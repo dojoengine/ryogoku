@@ -5,7 +5,9 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.68"
+chrono = "0.4.23"
 clap = { version = "4.0.32", features = ["env", "unicode", "cargo", "derive"] }
 ryogoku-operator = { path = "../operator" }
 serde_yaml = "0.9.16"
+tabled = { version = "0.10.0", features = ["color"] }
 tokio = { version = "1.24.1", features = ["macros", "rt-multi-thread"] }

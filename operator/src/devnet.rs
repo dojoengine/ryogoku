@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use kube::{core::object::HasStatus, CustomResource};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -37,5 +39,15 @@ impl Default for DevnetState {
 impl Devnet {
     pub fn state(&self) -> DevnetState {
         self.status().map(|s| s.state).unwrap_or_default()
+    }
+}
+
+impl Display for DevnetState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DevnetState::Created => write!(f, "CREATED"),
+            DevnetState::Running => write!(f, "RUNNING"),
+            DevnetState::Errored => write!(f, "ERRORED"),
+        }
     }
 }
