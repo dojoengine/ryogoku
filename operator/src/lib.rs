@@ -1,7 +1,12 @@
-mod controller;
+pub mod controller;
 mod devnet;
+mod error;
 
-pub use self::devnet::{Devnet, DevnetSpec, DevnetStatus};
+pub use self::{
+    devnet::{Devnet, DevnetSpec, DevnetStatus},
+    error::{Error, Result},
+};
+
 pub mod kube {
     pub use kube::*;
 }
