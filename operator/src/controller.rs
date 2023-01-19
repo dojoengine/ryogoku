@@ -6,7 +6,7 @@ use k8s_openapi::{
     apimachinery::{self, pkg::apis::meta},
 };
 use kube::{
-    api::{ListParams, PostParams},
+    api::{DeleteParams, ListParams, PostParams},
     runtime::{
         controller::Action,
         finalizer::{self, Event as Finalizer},
@@ -65,9 +65,23 @@ impl Devnet {
             DevnetState::Created => {
                 // create pod
                 let pod_manifest = self.pod_manifest();
+                let existing = pods.get_opt(&self.name_any()).await?;
+                if let Some(pod) = existing {
+                    info!(
+                        pod = pod.name_any(),
+                        namespace = pod.metadata.namespace,
+                        "pod already exists"
+                    );
+                    return Ok(Action::requeue(Duration::from_secs(5 * 60)));
+                }
+
                 let pp = PostParams::default();
                 let pod = pods.create(&pp, &pod_manifest).await?;
-                info!(pod = ?pod, "pod created");
+                info!(
+                    pod = pod.name_any(),
+                    namespace = pod.metadata.namespace,
+                    "pod created"
+                );
                 // check again in 5 minutes
                 Ok(Action::requeue(Duration::from_secs(5 * 60)))
             }
@@ -83,9 +97,18 @@ impl Devnet {
         }
     }
 
-    async fn cleanup(&self, _ctx: Arc<Context>) -> Result<Action> {
-        // delete pod
-        todo!()
+    async fn cleanup(&self, ctx: Arc<Context>) -> Result<Action> {
+        debug!("cleanup devnet");
+        let ns = self.namespace().expect("devnet is namespaced");
+        let pods: Api<api::core::v1::Pod> = Api::namespaced(ctx.client.clone(), &ns);
+        let dp = DeleteParams::default();
+        let _result = pods.delete(&self.name_any(), &dp).await?;
+        info!(
+            pod = self.name_any(),
+            namespace = self.metadata.namespace,
+            "pod deleted"
+        );
+        Ok(Action::await_change())
     }
 
     fn pod_manifest(&self) -> api::core::v1::Pod {
