@@ -6,7 +6,7 @@ use devnet::DevnetOut;
 use ryogoku_operator::{
     k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition,
     kube::{
-        api::{Api, ListParams, ObjectMeta, PostParams},
+        api::{Api, DeleteParams, ListParams, ObjectMeta, PostParams},
         Client, CustomResourceExt, ResourceExt,
     },
     Devnet, DevnetSpec,
@@ -139,8 +139,13 @@ async fn devnet(command: DevnetCommand) -> Result<()> {
             println!("{}", table);
             Ok(())
         }
-        DevnetCommand::Delete { name: _name } => {
-            todo!()
+        DevnetCommand::Delete { name } => {
+            // TODO: client based on namespace flag.
+            let devnets: Api<Devnet> = Api::namespaced(client, "default");
+            let dp = DeleteParams::default();
+            let _devnet = devnets.delete(&name, &dp).await?;
+            println!("devnet {} deleted", name);
+            Ok(())
         }
     }
 }
