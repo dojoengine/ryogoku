@@ -55,6 +55,12 @@ enum DevnetCommand {
         /// Create the network in the given namespace.
         #[arg(short, long)]
         namespace: Option<String>,
+        /// Specify the service type.
+        #[arg(short, long)]
+        service_type: Option<String>,
+        /// Shorthand for `--service-type=LoadBalancer`.
+        #[arg(short, long)]
+        expose: bool,
     },
     /// List all development networks.
     List {
@@ -121,17 +127,32 @@ async fn crd(command: CrdCommand) -> Result<()> {
 async fn devnet(command: DevnetCommand) -> Result<()> {
     let client = Client::try_default().await?;
     match command {
-        DevnetCommand::Create { name, namespace } => {
+        DevnetCommand::Create {
+            name,
+            namespace,
+            service_type,
+            expose,
+        } => {
             let namespace = namespace.unwrap_or_else(|| "default".to_string());
             let devnets: Api<Devnet> = Api::namespaced(client, &namespace);
 
+            let service_type = if service_type.is_some() {
+                service_type
+            } else if expose {
+                Some("LoadBalancer".to_string())
+            } else {
+                None
+            };
             let data = Devnet {
                 metadata: ObjectMeta {
                     name: Some(name),
                     namespace: Some(namespace),
                     ..ObjectMeta::default()
                 },
-                spec: DevnetSpec::default(),
+                spec: DevnetSpec {
+                    service_type,
+                    ..DevnetSpec::default()
+                },
                 status: None,
             };
             let devnet = devnets.create(&PostParams::default(), &data).await?;
