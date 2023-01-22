@@ -21,8 +21,8 @@
             buildInputs = with pkgs; [
               clang
               openssl
-              kind
               kubectl
+              minikube
               pkg-config
               (rust-bin.stable.latest.default.override {
                 extensions = [ "rust-src" ];
