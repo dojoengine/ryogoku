@@ -17,10 +17,11 @@ impl DevnetOut {
 }
 
 impl Tabled for DevnetOut {
-    const LENGTH: usize = 3;
+    const LENGTH: usize = 4;
 
     fn fields(&self) -> Vec<Cow<'_, str>> {
         let inner = &self.0;
+        let namespace = inner.namespace().expect("devnet is namespaced");
         let name = inner.name_any();
         let state = format!("{}", inner.state());
         let age = inner
@@ -30,11 +31,17 @@ impl Tabled for DevnetOut {
             .map(|t| time_ago(t).to_human())
             .unwrap_or_default();
 
-        vec![Cow::Owned(name), Cow::Owned(state), Cow::Owned(age)]
+        vec![
+            Cow::Owned(namespace),
+            Cow::Owned(name),
+            Cow::Owned(state),
+            Cow::Owned(age),
+        ]
     }
 
     fn headers() -> Vec<Cow<'static, str>> {
         vec![
+            Cow::Owned("NAMESPACE".to_string()),
             Cow::Owned("NAME".to_string()),
             Cow::Owned("STATE".to_string()),
             Cow::Owned("AGE".to_string()),
