@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
 use futures::{future::BoxFuture, FutureExt, StreamExt};
 use k8s_openapi::{
@@ -23,6 +23,7 @@ use crate::{
 };
 
 static DEVNET_FINALIZER: &str = "devnets.ryogoku.stark";
+static DEFAULT_IMAGE: &str = "shardlabs/starknet-devnet:latest";
 
 /// Reconciler context.
 #[derive(Clone)]
@@ -82,6 +83,7 @@ impl Devnet {
                     namespace = pod.metadata.namespace,
                     "pod created"
                 );
+
                 // check again in 5 minutes
                 Ok(Action::requeue(Duration::from_secs(5 * 60)))
             }
@@ -135,20 +137,67 @@ impl Devnet {
             block_owner_deletion: Some(true),
             controller: Some(true),
         };
+        let labels = BTreeMap::from([("app.kubernetes.io/name".to_string(), self.name_any())]);
+
         ObjectMeta {
             name: self.metadata.name.clone(),
             owner_references: Some(vec![owner_ref]),
+            labels: Some(labels),
             ..ObjectMeta::default()
         }
     }
 
     fn pod_spec(&self) -> api::core::v1::PodSpec {
         use api::core::v1::{Container, ContainerPort, PodSpec};
+        let image = self
+            .spec
+            .image
+            .clone()
+            .unwrap_or_else(|| DEFAULT_IMAGE.to_string());
+
+        let mut args = Vec::default();
+
+        if self.spec.lite_mode.unwrap_or(false) {
+            args.push("--lite-mode".to_string());
+        }
+
+        if self.spec.lite_mode_block_hash.unwrap_or(false) {
+            args.push("--lite-mode-block-hash".to_string());
+        }
+
+        if self.spec.lite_mode_deploy_hash.unwrap_or(false) {
+            args.push("--lite-mode-deploy-hash".to_string());
+        }
+
+        if let Some(accounts) = self.spec.accounts {
+            args.push(format!("--accounts={}", accounts));
+        }
+
+        if let Some(initial_balance) = &self.spec.initial_balance {
+            args.push(format!("--initial-balance={}", initial_balance));
+        }
+
+        if let Some(seed) = &self.spec.seed {
+            args.push(format!("--seed={}", seed));
+        }
+
+        if let Some(start_time) = self.spec.start_time {
+            args.push(format!("--start-time={}", start_time));
+        }
+
+        if let Some(gas_price) = &self.spec.gas_price {
+            args.push(format!("--gas-price={}", gas_price));
+        }
+
+        if let Some(extra_args) = &self.spec.extra_args {
+            args.extend(extra_args.clone());
+        }
+
         PodSpec {
             containers: vec![Container {
-                // TODO: image should be configurable
                 name: "starknet-devnet".to_string(),
-                image: Some("shardlabs/starknet-devnet:latest".to_string()),
+                image: Some(image),
+                args: Some(args),
                 ports: Some(vec![ContainerPort {
                     container_port: 9575,
                     name: Some("rpc".to_string()),
