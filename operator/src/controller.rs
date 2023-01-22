@@ -2,11 +2,11 @@ use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
 use futures::{future::BoxFuture, FutureExt, StreamExt};
 use k8s_openapi::{
-    api,
+    api::{self, core::v1::ServicePort},
     apimachinery::{self, pkg::apis::meta},
 };
 use kube::{
-    api::{DeleteParams, ListParams, PostParams},
+    api::{DeleteParams, ListParams, Patch, PatchParams, PostParams},
     runtime::{
         controller::Action,
         finalizer::{self, Event as Finalizer},
@@ -14,10 +14,11 @@ use kube::{
     },
     Api, Client, CustomResourceExt, ResourceExt,
 };
+use serde_json::json;
 use tracing::{debug, error, info, warn};
 
 use crate::{
-    devnet::{Devnet, DevnetState},
+    devnet::{Devnet, DevnetState, DevnetStatus},
     error::Result,
     Error,
 };
@@ -56,41 +57,81 @@ async fn reconcile_devnet(devnet: Arc<Devnet>, ctx: Arc<Context>) -> Result<Acti
 impl Devnet {
     async fn reconcile(&self, ctx: Arc<Context>) -> Result<Action> {
         let ns = self.namespace().expect("devnet is namespaced");
-        let _name = self.name_any();
-        let _devnets: Api<Devnet> = Api::namespaced(ctx.client.clone(), &ns);
+        let name = self.name_any();
+        let devnets: Api<Devnet> = Api::namespaced(ctx.client.clone(), &ns);
         let pods: Api<api::core::v1::Pod> = Api::namespaced(ctx.client.clone(), &ns);
+        let services: Api<api::core::v1::Service> = Api::namespaced(ctx.client.clone(), &ns);
 
         debug!(state = ?self.state(), "reconcile from state");
 
         match self.state() {
             DevnetState::Created => {
                 // create pod
-                let pod_manifest = self.pod_manifest();
                 let existing = pods.get_opt(&self.name_any()).await?;
-                if let Some(pod) = existing {
+
+                let pod = if let Some(pod) = existing {
                     info!(
                         pod = pod.name_any(),
                         namespace = pod.metadata.namespace,
                         "pod already exists"
                     );
-                    return Ok(Action::requeue(Duration::from_secs(5 * 60)));
-                }
+                    pod
+                } else {
+                    let pod_manifest = self.pod_manifest();
+                    let pp = PostParams::default();
+                    let pod = pods.create(&pp, &pod_manifest).await?;
+                    info!(
+                        pod = pod.name_any(),
+                        namespace = pod.metadata.namespace,
+                        "pod created"
+                    );
+                    pod
+                };
 
-                let pp = PostParams::default();
-                let pod = pods.create(&pp, &pod_manifest).await?;
                 info!(
                     pod = pod.name_any(),
                     namespace = pod.metadata.namespace,
-                    "pod created"
+                    "updating status to Running"
                 );
+                // update status
+                let new_status = json!({
+                    "apiVersion": "ryogoku.stark/v1",
+                    "kind": "Devnet",
+                    "status": DevnetStatus {
+                        state: DevnetState::Running,
+                    },
+                });
+
+                let pp = PatchParams::apply("ryogoku").force();
+                devnets
+                    .patch_status(&name, &pp, &Patch::Apply(new_status))
+                    .await?;
 
                 // check again in 5 minutes
                 Ok(Action::requeue(Duration::from_secs(5 * 60)))
             }
             DevnetState::Running => {
-                // nothing to do?
-                // maybe can update image
-                todo!()
+                // create service now that pod is running
+                let existing = services.get_opt(&self.name_any()).await?;
+
+                if let Some(service) = existing {
+                    info!(
+                        service = service.name_any(),
+                        namespace = service.metadata.namespace,
+                        "service already exists"
+                    );
+                } else {
+                    let service_manifest = self.service_manifest();
+                    let pp = PostParams::default();
+                    let service = services.create(&pp, &service_manifest).await?;
+                    info!(
+                        service = service.name_any(),
+                        namespace = service.metadata.namespace,
+                        "service created"
+                    );
+                }
+
+                Ok(Action::await_change())
             }
             DevnetState::Errored => {
                 // container did not start.
@@ -115,7 +156,7 @@ impl Devnet {
 
     fn pod_manifest(&self) -> api::core::v1::Pod {
         use api::core::v1::Pod;
-        let metadata = self.pod_metadata();
+        let metadata = self.object_metadata();
         let spec = self.pod_spec();
 
         Pod {
@@ -125,7 +166,7 @@ impl Devnet {
         }
     }
 
-    fn pod_metadata(&self) -> meta::v1::ObjectMeta {
+    fn object_metadata(&self) -> meta::v1::ObjectMeta {
         use apimachinery::pkg::apis::meta::v1::OwnerReference;
         use meta::v1::ObjectMeta;
         let api_resource = Devnet::api_resource();
@@ -206,6 +247,34 @@ impl Devnet {
                 ..Container::default()
             }],
             ..PodSpec::default()
+        }
+    }
+
+    fn service_manifest(&self) -> api::core::v1::Service {
+        use api::core::v1::Service;
+        let metadata = self.object_metadata();
+        let spec = self.service_spec();
+
+        Service {
+            metadata,
+            spec: Some(spec),
+            ..Service::default()
+        }
+    }
+
+    fn service_spec(&self) -> api::core::v1::ServiceSpec {
+        use api::core::v1::ServiceSpec;
+        use apimachinery::pkg::util::intstr::IntOrString;
+
+        ServiceSpec {
+            type_: self.spec.service_type.clone(),
+            ports: Some(vec![ServicePort {
+                name: Some("rpc".to_string()),
+                port: 9575,
+                target_port: Some(IntOrString::String("rpc".to_string())),
+                ..ServicePort::default()
+            }]),
+            ..ServiceSpec::default()
         }
     }
 }
