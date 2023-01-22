@@ -49,21 +49,29 @@ enum CrdCommand {
 #[derive(Subcommand)]
 enum DevnetCommand {
     /// Create a new development network.
-    //
-    // TODO: add -n flag.
     Create {
         /// Network name.
         name: String,
+        /// Create the network in the given namespace.
+        #[arg(short, long)]
+        namespace: Option<String>,
     },
     /// List all development networks.
-    //
-    // TODO: add -A and -n flags.
-    List,
-    //
-    // TODO: add -n flag.
+    List {
+        /// List networks in the given namespace.
+        #[arg(short, long)]
+        namespace: Option<String>,
+        /// If present, list networks in all namespaces.
+        #[arg(short = 'A', long)]
+        all_namespaces: bool,
+    },
+    /// Delete a development network.
     Delete {
         /// Network name.
         name: String,
+        /// Delete the network in the given namespace.
+        #[arg(short, long)]
+        namespace: Option<String>,
     },
 }
 
@@ -113,38 +121,54 @@ async fn crd(command: CrdCommand) -> Result<()> {
 async fn devnet(command: DevnetCommand) -> Result<()> {
     let client = Client::try_default().await?;
     match command {
-        DevnetCommand::Create { name } => {
-            // TODO: client based on namespace flag.
-            let devnets: Api<Devnet> = Api::namespaced(client, "default");
+        DevnetCommand::Create { name, namespace } => {
+            let namespace = namespace.unwrap_or_else(|| "default".to_string());
+            let devnets: Api<Devnet> = Api::namespaced(client, &namespace);
+
             let data = Devnet {
                 metadata: ObjectMeta {
                     name: Some(name),
-                    namespace: Some("default".to_string()),
+                    namespace: Some(namespace),
                     ..ObjectMeta::default()
                 },
                 spec: DevnetSpec::default(),
                 status: None,
             };
             let devnet = devnets.create(&PostParams::default(), &data).await?;
+
             println!("devnet {} created", devnet.name_any());
+
             Ok(())
         }
-        DevnetCommand::List => {
-            // TODO: client based on namespace flag.
-            let devnets: Api<Devnet> = Api::all(client);
+        DevnetCommand::List {
+            namespace,
+            all_namespaces,
+        } => {
+            let devnets: Api<Devnet> = if all_namespaces {
+                Api::all(client)
+            } else {
+                let namespace = namespace.unwrap_or_else(|| "default".to_string());
+                Api::namespaced(client, &namespace)
+            };
+
             let all = devnets.list(&ListParams::default()).await?;
 
             let all_out: Vec<_> = all.into_iter().map(DevnetOut::new).collect();
+
             let table = Table::new(all_out).with(Style::empty()).to_string();
             println!("{}", table);
+
             Ok(())
         }
-        DevnetCommand::Delete { name } => {
-            // TODO: client based on namespace flag.
-            let devnets: Api<Devnet> = Api::namespaced(client, "default");
+        DevnetCommand::Delete { name, namespace } => {
+            let namespace = namespace.unwrap_or_else(|| "default".to_string());
+            let devnets: Api<Devnet> = Api::namespaced(client, &namespace);
+
             let dp = DeleteParams::default();
             let _devnet = devnets.delete(&name, &dp).await?;
+
             println!("devnet {} deleted", name);
+
             Ok(())
         }
     }
