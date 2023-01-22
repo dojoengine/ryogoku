@@ -48,7 +48,7 @@ pub enum DevnetState {
 #[derive(Deserialize, Serialize, Clone, Default, Debug, JsonSchema)]
 pub struct DevnetStatus {
     /// Devnet state.
-    state: DevnetState,
+    pub state: DevnetState,
 }
 
 impl Default for DevnetState {
