@@ -145,12 +145,21 @@ impl Devnet {
         let ns = self.namespace().expect("devnet is namespaced");
         let pods: Api<api::core::v1::Pod> = Api::namespaced(ctx.client.clone(), &ns);
         let dp = DeleteParams::default();
-        let _result = pods.delete(&self.name_any(), &dp).await?;
-        info!(
-            pod = self.name_any(),
-            namespace = self.metadata.namespace,
-            "pod deleted"
-        );
+        let _result = pods.delete(&self.name_any(), &dp).await;
+        if let Err(kube::Error::Api(_)) = _result {
+            warn!(
+                pod = self.name_any(),
+                namespace = self.metadata.namespace,
+                "No pod was found to delete, assuming there is nothing to do.",
+            );
+        }
+        else {
+            info!(
+                pod = self.name_any(),
+                namespace = self.metadata.namespace,
+                "pod deleted"
+            );
+        }
         Ok(Action::await_change())
     }
 
