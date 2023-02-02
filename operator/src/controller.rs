@@ -316,12 +316,14 @@ impl Devnet {
                 name: Some("rpc".to_string()),
                 port: 9575,
                 target_port: Some(IntOrString::String("rpc".to_string())),
+                node_port: self.spec.node_port_rpc.clone(),
                 ..ServicePort::default()
             },
             ServicePort {
                 name: Some("gateway".to_string()),
                 port: 5050,
                 target_port: Some(IntOrString::String("gateway".to_string())),
+                node_port: self.spec.node_port_gateway.clone(),
                 ..ServicePort::default()
             }]),
             ..ServiceSpec::default()
