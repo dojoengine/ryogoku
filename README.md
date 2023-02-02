@@ -21,6 +21,8 @@ $ ryogoku crd print | kubectl apply -f -
 $ ryogoku crd install
 ```
 
+Then simply running the `ryogoku-operator` binary in the cluster operates it.
+
 ## Hacking
 
 
@@ -42,4 +44,10 @@ Kubernetes control plane is running at https://127.0.0.1:34461
 CoreDNS is running at https://127.0.0.1:34461/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy
 
 To further debug and diagnose cluster problems, use 'kubectl cluster-info dump'.
+```
+
+To expose the devnet, simply create a devnet using `--expose`, and the use minikube to Tunnel:
+
+```txt
+$ minikube service [devnet-name]
 ```

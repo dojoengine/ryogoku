@@ -187,7 +187,10 @@ impl Devnet {
             block_owner_deletion: Some(true),
             controller: Some(true),
         };
-        let labels = BTreeMap::from([("app.kubernetes.io/name".to_string(), self.name_any())]);
+        let labels = BTreeMap::from([
+            ("app.kubernetes.io/name".to_string(), self.name_any()),
+            ("ryogoku.stark/devnet_name".to_string(), self.name_any())
+            ]);
 
         ObjectMeta {
             name: self.metadata.name.clone(),
@@ -248,11 +251,18 @@ impl Devnet {
                 name: "starknet-devnet".to_string(),
                 image: Some(image),
                 args: Some(args),
-                ports: Some(vec![ContainerPort {
-                    container_port: 9575,
-                    name: Some("rpc".to_string()),
-                    ..ContainerPort::default()
-                }]),
+                ports: Some(vec![
+                    ContainerPort {
+                        container_port: 9575,
+                        name: Some("rpc".to_string()),
+                        ..ContainerPort::default()
+                    },
+                    ContainerPort {
+                        container_port: 5050,
+                        name: Some("gateway".to_string()),
+                        ..ContainerPort::default()
+                    }
+                ]),
                 ..Container::default()
             }],
             ..PodSpec::default()
@@ -276,11 +286,20 @@ impl Devnet {
         use apimachinery::pkg::util::intstr::IntOrString;
 
         ServiceSpec {
+            selector: Some(BTreeMap::from([
+                ("ryogoku.stark/devnet_name".to_string(), self.name_any())
+            ])),
             type_: self.spec.service_type.clone(),
             ports: Some(vec![ServicePort {
                 name: Some("rpc".to_string()),
                 port: 9575,
                 target_port: Some(IntOrString::String("rpc".to_string())),
+                ..ServicePort::default()
+            },
+            ServicePort {
+                name: Some("gateway".to_string()),
+                port: 5050,
+                target_port: Some(IntOrString::String("gateway".to_string())),
                 ..ServicePort::default()
             }]),
             ..ServiceSpec::default()
