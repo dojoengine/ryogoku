@@ -139,7 +139,7 @@ async fn devnet(command: DevnetCommand) -> Result<()> {
             let service_type = if service_type.is_some() {
                 service_type
             } else if expose {
-                Some("LoadBalancer".to_string())
+                Some("NodePort".to_string())
             } else {
                 None
             };
