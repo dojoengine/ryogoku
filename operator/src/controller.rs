@@ -59,40 +59,14 @@ impl Devnet {
         let ns = self.namespace().expect("devnet is namespaced");
         let name = self.name_any();
         let devnets: Api<Devnet> = Api::namespaced(ctx.client.clone(), &ns);
-        let pods: Api<api::core::v1::Pod> = Api::namespaced(ctx.client.clone(), &ns);
-        let services: Api<api::core::v1::Service> = Api::namespaced(ctx.client.clone(), &ns);
 
         debug!(state = ?self.state(), "reconcile from state");
 
         match self.state() {
             DevnetState::Created => {
-                // create pod
-                let existing = pods.get_opt(&self.name_any()).await?;
+                let pod = self.setup_pods(ctx.clone()).await?;
+                let service = self.setup_service(ctx.clone()).await?;
 
-                let pod = if let Some(pod) = existing {
-                    info!(
-                        pod = pod.name_any(),
-                        namespace = pod.metadata.namespace,
-                        "pod already exists"
-                    );
-                    pod
-                } else {
-                    let pod_manifest = self.pod_manifest();
-                    let pp = PostParams::default();
-                    let pod = pods.create(&pp, &pod_manifest).await?;
-                    info!(
-                        pod = pod.name_any(),
-                        namespace = pod.metadata.namespace,
-                        "pod created"
-                    );
-                    pod
-                };
-
-                info!(
-                    pod = pod.name_any(),
-                    namespace = pod.metadata.namespace,
-                    "updating status to Running"
-                );
                 // update status
                 let new_status = json!({
                     "apiVersion": "ryogoku.stark/v1",
@@ -107,29 +81,22 @@ impl Devnet {
                     .patch_status(&name, &pp, &Patch::Apply(new_status))
                     .await?;
 
+                info!(
+                    pod = pod.name_any(),
+                    service = service.name_any(),
+                    namespace = pod.metadata.namespace,
+                    "updating status to Running"
+                );
+
                 // check again in 5 minutes
                 Ok(Action::requeue(Duration::from_secs(5 * 60)))
             }
             DevnetState::Running => {
-                // create service now that pod is running
-                let existing = services.get_opt(&self.name_any()).await?;
+                // Check pod is still running
+                self.setup_pods(ctx.clone()).await?;
 
-                if let Some(service) = existing {
-                    info!(
-                        service = service.name_any(),
-                        namespace = service.metadata.namespace,
-                        "service already exists"
-                    );
-                } else {
-                    let service_manifest = self.service_manifest();
-                    let pp = PostParams::default();
-                    let service = services.create(&pp, &service_manifest).await?;
-                    info!(
-                        service = service.name_any(),
-                        namespace = service.metadata.namespace,
-                        "service created"
-                    );
-                }
+                // Check service is still running
+                self.setup_service(ctx.clone()).await?;
 
                 Ok(Action::await_change())
             }
@@ -139,6 +106,61 @@ impl Devnet {
             }
         }
     }
+
+    async fn setup_pods(&self, ctx: Arc<Context>) -> Result<api::core::v1::Pod> {
+        let ns = self.namespace().expect("devnet is namespaced");
+        let pods: Api<api::core::v1::Pod> = Api::namespaced(ctx.client.clone(), &ns);
+
+        // create pod
+        let existing = pods.get_opt(&self.name_any()).await?;
+
+        if let Some(pod) = existing {
+            info!(
+                pod = pod.name_any(),
+                namespace = pod.metadata.namespace,
+                "pod already exists"
+            );
+            Ok(pod)
+        } else {
+            let pod_manifest = self.pod_manifest();
+            let pp = PostParams::default();
+            let pod = pods.create(&pp, &pod_manifest).await?;
+            info!(
+                pod = pod.name_any(),
+                namespace = pod.metadata.namespace,
+                "pod created"
+            );
+            Ok(pod)
+        }
+    }
+
+    async fn setup_service(&self, ctx: Arc<Context>) -> Result<api::core::v1::Service> {
+        let ns = self.namespace().expect("devnet is namespaced");
+        let services: Api<api::core::v1::Service> = Api::namespaced(ctx.client.clone(), &ns);
+
+        // create service now that pod is running
+        let existing = services.get_opt(&self.name_any()).await?;
+
+        if let Some(service) = existing {
+            info!(
+                service = service.name_any(),
+                namespace = service.metadata.namespace,
+                "service already exists"
+            );
+            Ok(service)
+        } else {
+            let service_manifest = self.service_manifest();
+            let pp = PostParams::default();
+            let service = services.create(&pp, &service_manifest).await?;
+            info!(
+                service = service.name_any(),
+                namespace = service.metadata.namespace,
+                "service created"
+            );
+            Ok(service)
+        }
+    }
+
 
     async fn cleanup(&self, ctx: Arc<Context>) -> Result<Action> {
         debug!("cleanup devnet");
@@ -324,8 +346,13 @@ pub async fn init(client: Client) -> Result<BoxFuture<'static, ()>> {
 
     info!("starting operator");
 
+    let pods = Api::<api::core::v1::Pod>::all(client.clone());
+    let services = Api::<api::core::v1::Service>::all(client.clone());
+
     let ctx = Context { client };
     let controller = Controller::new(devnets, ListParams::default())
+        .owns(pods, ListParams::default())
+        .owns(services, ListParams::default())
         .run(reconcile_devnet, error_policy, ctx.into())
         .filter_map(|x| async move { std::result::Result::ok(x) })
         .for_each(|_| futures::future::ready(()))
