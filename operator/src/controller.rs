@@ -145,8 +145,8 @@ impl Devnet {
         let ns = self.namespace().expect("devnet is namespaced");
         let pods: Api<api::core::v1::Pod> = Api::namespaced(ctx.client.clone(), &ns);
         let dp = DeleteParams::default();
-        let _result = pods.delete(&self.name_any(), &dp).await;
-        if let Err(kube::Error::Api(_)) = _result {
+        let result = pods.delete(&self.name_any(), &dp).await;
+        if let Err(kube::Error::Api(_)) = result {
             warn!(
                 pod = self.name_any(),
                 namespace = self.metadata.namespace,
