@@ -44,6 +44,12 @@ enum CrdCommand {
         #[arg(short)]
         dry_run: bool,
     },
+    /// Delete CRD in cluster
+    Delete {
+        /// Submit request but don't persist it
+        #[arg(short)]
+        dry_run: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -110,6 +116,38 @@ async fn crd(command: CrdCommand) -> Result<()> {
             match crds.create(&opts, &Devnet::crd()).await {
                 Ok(_) => {
                     println!(" 📦 CRD installed.");
+                    println!();
+                    println!("Thanks for using Ryogoku 🕹");
+                    Ok(())
+                }
+                Err(err) => {
+                    println!(" 🩹 Something went wrong:");
+                    println!("Error: {}", err);
+                    Ok(())
+                }
+            }
+        }
+        CrdCommand::Delete { dry_run } => {
+            let client = Client::try_default().await?;
+            let crds: Api<CustomResourceDefinition> = Api::all(client);
+            let crd_name = Devnet::crd_name();
+            let existing = crds.get_opt(crd_name).await?;
+
+            if existing.is_none() {
+                println!("CRD {} does not exist.", crd_name);
+                println!();
+                println!("Nothing to do, bye! 🕹");
+                return Ok(());
+            }
+
+            let opts = DeleteParams {
+                dry_run,
+                ..Default::default()
+            };
+            println!("Deleting CRD {}...", crd_name);
+            match crds.delete(&crd_name, &opts).await {
+                Ok(_) => {
+                    println!(" 🗑 CRD deleted.");
                     println!();
                     println!("Thanks for using Ryogoku 🕹");
                     Ok(())
