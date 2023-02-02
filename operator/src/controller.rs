@@ -64,7 +64,7 @@ impl Devnet {
 
         match self.state() {
             DevnetState::Created => {
-                let pod = self.setup_pods(ctx.clone()).await?;
+                let deploy = self.setup_deployment(ctx.clone()).await?;
                 let service = self.setup_service(ctx.clone()).await?;
 
                 // update status
@@ -82,9 +82,9 @@ impl Devnet {
                     .await?;
 
                 info!(
-                    pod = pod.name_any(),
+                    deploy = deploy.name_any(),
                     service = service.name_any(),
-                    namespace = pod.metadata.namespace,
+                    namespace = deploy.metadata.namespace,
                     "updating status to Running"
                 );
 
@@ -92,8 +92,8 @@ impl Devnet {
                 Ok(Action::requeue(Duration::from_secs(5 * 60)))
             }
             DevnetState::Running => {
-                // Check pod is still running
-                self.setup_pods(ctx.clone()).await?;
+                // Check deployment is still running
+                self.setup_deployment(ctx.clone()).await?;
 
                 // Check service is still running
                 self.setup_service(ctx.clone()).await?;
@@ -107,30 +107,29 @@ impl Devnet {
         }
     }
 
-    async fn setup_pods(&self, ctx: Arc<Context>) -> Result<api::core::v1::Pod> {
+    async fn setup_deployment(&self, ctx: Arc<Context>) -> Result<api::apps::v1::Deployment> {
         let ns = self.namespace().expect("devnet is namespaced");
-        let pods: Api<api::core::v1::Pod> = Api::namespaced(ctx.client.clone(), &ns);
+        let deploys: Api<api::apps::v1::Deployment> = Api::namespaced(ctx.client.clone(), &ns);
 
-        // create pod
-        let existing = pods.get_opt(&self.name_any()).await?;
+        let existing = deploys.get_opt(&self.name_any()).await?;
 
-        if let Some(pod) = existing {
+        if let Some(deploy) = existing {
             info!(
-                pod = pod.name_any(),
-                namespace = pod.metadata.namespace,
-                "pod already exists"
+                deploy = deploy.name_any(),
+                namespace = deploy.metadata.namespace,
+                "deployment already exists"
             );
-            Ok(pod)
+            Ok(deploy)
         } else {
-            let pod_manifest = self.pod_manifest();
+            let manifest = self.deploy_manifest();
             let pp = PostParams::default();
-            let pod = pods.create(&pp, &pod_manifest).await?;
+            let deploy = deploys.create(&pp, &manifest).await?;
             info!(
-                pod = pod.name_any(),
-                namespace = pod.metadata.namespace,
-                "pod created"
+                deploy = deploy.name_any(),
+                namespace = deploy.metadata.namespace,
+                "deployment created"
             );
-            Ok(pod)
+            Ok(deploy)
         }
     }
 
@@ -138,7 +137,6 @@ impl Devnet {
         let ns = self.namespace().expect("devnet is namespaced");
         let services: Api<api::core::v1::Service> = Api::namespaced(ctx.client.clone(), &ns);
 
-        // create service now that pod is running
         let existing = services.get_opt(&self.name_any()).await?;
 
         if let Some(service) = existing {
@@ -161,39 +159,38 @@ impl Devnet {
         }
     }
 
-
     async fn cleanup(&self, ctx: Arc<Context>) -> Result<Action> {
         debug!("cleanup devnet");
         let ns = self.namespace().expect("devnet is namespaced");
-        let pods: Api<api::core::v1::Pod> = Api::namespaced(ctx.client.clone(), &ns);
+        let deploys: Api<api::apps::v1::Deployment> = Api::namespaced(ctx.client.clone(), &ns);
         let dp = DeleteParams::default();
-        let result = pods.delete(&self.name_any(), &dp).await;
+        let result = deploys.delete(&self.name_any(), &dp).await;
         if let Err(kube::Error::Api(_)) = result {
             warn!(
-                pod = self.name_any(),
+                deploy = self.name_any(),
                 namespace = self.metadata.namespace,
-                "No pod was found to delete, assuming there is nothing to do.",
+                "No deployment was found to delete, assuming there is nothing to do.",
             );
         }
         else {
             info!(
-                pod = self.name_any(),
+                deploy = self.name_any(),
                 namespace = self.metadata.namespace,
-                "pod deleted"
+                "deployment deleted"
             );
         }
         Ok(Action::await_change())
     }
 
-    fn pod_manifest(&self) -> api::core::v1::Pod {
-        use api::core::v1::Pod;
+    fn deploy_manifest(&self) -> api::apps::v1::Deployment {
+        use api::apps::v1::Deployment;
         let metadata = self.object_metadata();
-        let spec = self.pod_spec();
+        let spec = self.deploy_spec();
 
-        Pod {
+        Deployment {
             metadata,
             spec: Some(spec),
-            ..Pod::default()
+            ..Deployment::default()
         }
     }
 
@@ -222,8 +219,15 @@ impl Devnet {
         }
     }
 
-    fn pod_spec(&self) -> api::core::v1::PodSpec {
-        use api::core::v1::{Container, ContainerPort, PodSpec};
+    fn selector_labels(&self) -> Option<BTreeMap<String, String>> {
+        Some(BTreeMap::from([
+            ("ryogoku.stark/devnet_name".to_string(), self.name_any())
+        ]))
+    }
+
+    fn deploy_spec(&self) -> api::apps::v1::DeploymentSpec {
+        use api::core::v1::{Container, ContainerPort, PodTemplateSpec, PodSpec};
+        use api::apps::v1::DeploymentSpec;
         let image = self
             .spec
             .image
@@ -267,27 +271,39 @@ impl Devnet {
         if let Some(extra_args) = &self.spec.extra_args {
             args.extend(extra_args.clone());
         }
-
-        PodSpec {
-            containers: vec![Container {
-                name: "starknet-devnet".to_string(),
-                image: Some(image),
-                args: Some(args),
-                ports: Some(vec![
-                    ContainerPort {
-                        container_port: 9575,
-                        name: Some("rpc".to_string()),
-                        ..ContainerPort::default()
-                    },
-                    ContainerPort {
-                        container_port: 5050,
-                        name: Some("gateway".to_string()),
-                        ..ContainerPort::default()
-                    }
-                ]),
-                ..Container::default()
-            }],
-            ..PodSpec::default()
+        
+        DeploymentSpec {
+            replicas: Some(1),
+            selector: meta::v1::LabelSelector {
+                match_labels: self.selector_labels(),
+                ..meta::v1::LabelSelector::default()
+            },
+            template: PodTemplateSpec {
+                metadata: Some(self.object_metadata()),
+                spec: Some(PodSpec {
+                    containers: vec![Container {
+                        name: "starknet-devnet".to_string(),
+                        image: Some(image),
+                        args: Some(args),
+                        ports: Some(vec![
+                            ContainerPort {
+                                container_port: 9575,
+                                name: Some("rpc".to_string()),
+                                ..ContainerPort::default()
+                            },
+                            ContainerPort {
+                                container_port: 5050,
+                                name: Some("gateway".to_string()),
+                                ..ContainerPort::default()
+                            }
+                        ]),
+                        ..Container::default()
+                    }],
+                    ..PodSpec::default()
+                }),
+                ..PodTemplateSpec::default()
+            },
+            ..DeploymentSpec::default()
         }
     }
 
@@ -308,9 +324,7 @@ impl Devnet {
         use apimachinery::pkg::util::intstr::IntOrString;
 
         ServiceSpec {
-            selector: Some(BTreeMap::from([
-                ("ryogoku.stark/devnet_name".to_string(), self.name_any())
-            ])),
+            selector: self.selector_labels(),
             type_: self.spec.service_type.clone(),
             ports: Some(vec![ServicePort {
                 name: Some("rpc".to_string()),
@@ -346,12 +360,12 @@ pub async fn init(client: Client) -> Result<BoxFuture<'static, ()>> {
 
     info!("starting operator");
 
-    let pods = Api::<api::core::v1::Pod>::all(client.clone());
+    let deploys = Api::<api::apps::v1::Deployment>::all(client.clone());
     let services = Api::<api::core::v1::Service>::all(client.clone());
 
     let ctx = Context { client };
     let controller = Controller::new(devnets, ListParams::default())
-        .owns(pods, ListParams::default())
+        .owns(deploys, ListParams::default())
         .owns(services, ListParams::default())
         .run(reconcile_devnet, error_policy, ctx.into())
         .filter_map(|x| async move { std::result::Result::ok(x) })
