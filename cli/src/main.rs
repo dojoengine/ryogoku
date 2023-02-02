@@ -67,6 +67,12 @@ enum DevnetCommand {
         /// Shorthand for `--service-type=LoadBalancer`.
         #[arg(short, long)]
         expose: bool,
+        /// Specify the node port the RPC will be exposed on. Service type must be NodePort.
+        #[arg(long)]
+        node_port_rpc: Option<i32>,
+        /// Specify the node port the gateway will be exposed on. Service type must be NodePort.
+        #[arg(long)]
+        node_port_gateway: Option<i32>,
     },
     /// List all development networks.
     List {
@@ -111,7 +117,6 @@ async fn crd(command: CrdCommand) -> Result<()> {
                 dry_run,
                 ..Default::default()
             };
-
             println!("Creating CRD {}...", crd_name);
             match crds.create(&opts, &Devnet::crd()).await {
                 Ok(_) => {
@@ -170,6 +175,8 @@ async fn devnet(command: DevnetCommand) -> Result<()> {
             namespace,
             service_type,
             expose,
+            node_port_rpc,
+            node_port_gateway,
         } => {
             let namespace = namespace.unwrap_or_else(|| "default".to_string());
             let devnets: Api<Devnet> = Api::namespaced(client, &namespace);
@@ -181,6 +188,13 @@ async fn devnet(command: DevnetCommand) -> Result<()> {
             } else {
                 None
             };
+
+            if (node_port_rpc.is_some() || node_port_gateway.is_some()) && !matches!(&service_type, Some(a) if a == "NodePort") {
+                return Err(anyhow::anyhow!("Node ports can only be specified when service type is NodePort"));
+            }
+
+            println!("node port : {}", node_port_rpc.unwrap_or(0));
+
             let data = Devnet {
                 metadata: ObjectMeta {
                     name: Some(name),
@@ -189,6 +203,8 @@ async fn devnet(command: DevnetCommand) -> Result<()> {
                 },
                 spec: DevnetSpec {
                     service_type,
+                    node_port_rpc,
+                    node_port_gateway,
                     ..DevnetSpec::default()
                 },
                 status: None,

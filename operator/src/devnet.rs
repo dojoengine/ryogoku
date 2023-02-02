@@ -31,6 +31,10 @@ pub struct DevnetSpec {
     pub extra_args: Option<Vec<String>>,
     /// Specify how the service is exposed.
     pub service_type: Option<String>,
+    /// Specify the node port of the RPC. Defaults to a k8s assigned port.
+    pub node_port_rpc: Option<i32>,
+    /// Specify the node port of the gateway. Defaults to a k8s assigned port.
+    pub node_port_gateway: Option<i32>,
 }
 
 /// State of the devnet.
