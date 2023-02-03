@@ -1,0 +1,59 @@
+name: Ryogoku docker pipeline
+
+on:
+  push:
+    branches:
+    - main
+    - setup-ci
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  check:
+    runs-on: ubuntu-22.04
+    steps:
+    - name: git checkout
+      uses: actions/checkout@v3
+    - name: install nix
+      uses: cachix/install-nix-action@v17
+      with:
+        extra_nix_config: |
+          access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
+
+    - name: cargo fmt
+      run: nix develop --command ci-cargo-fmt
+    - name: cargo clippy
+      run: nix develop --command ci-cargo-clippy
+
+  build_docker:
+    runs-on: ubuntu-22.04
+    needs:
+    - check
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, macos-12]
+    steps:
+    - name: git checkout
+      uses: actions/checkout@v3
+    - name: install nix
+      uses: cachix/install-nix-action@v17
+      with:
+        extra_nix_config: |
+          access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
+
+    - name: setup rust cache
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+        key: ryogoku-${{ hashFiles('**/Cargo.lock') }}
+    - name: build ryogoku docker image
+      run: nix develop --command ci-build-ryogoku
+    - name: build operator docker image
+      run: nix develop --command ci-build-operator
+
