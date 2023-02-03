@@ -51,3 +51,27 @@ To expose the devnet, simply create a devnet using `--expose`, and the use minik
 ```txt
 $ minikube service [devnet-name]
 ```
+
+
+### Building
+
+You can build the crates using cargo directly, or by using the provided nix
+packages. Nix is also used to build the docker images and to test CI locally.
+
+The following command builds the operator, the resulting binary is in `result/bin/`.
+
+```txt
+nix build .#operator
+```
+
+The following command builds the docker image, in this case `result` is a docker image that can be loaded with `docker load < result`.
+
+```txt
+nix build .#operator
+```
+
+The following command can be used to run all the steps performed in the CI, but locally. You should ensure this command passes before opening a PR.
+
+```tx
+nix develop --command ci-local
+```

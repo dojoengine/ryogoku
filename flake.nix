@@ -15,17 +15,20 @@
           inherit system overlays;
         };
 
-        rustVersion = pkgs.rust-bin.stable.latest.default;
+        rustVersion = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
         rustPlatform = pkgs.makeRustPlatform {
           cargo = rustVersion;
           rustc = rustVersion;
         };
 
-        buildRustPackageWithDocker = { crate, dir, ports ? null, volumes ? null }:
+        buildRustPackageWithDocker = { dir, ports ? null, volumes ? null }:
           let
+            # Read package meta from Cargo.toml
+            meta = (builtins.fromTOML (builtins.readFile ./${dir}/Cargo.toml)).package;
+
             self = rustPlatform.buildRustPackage rec {
-              pname = crate;
-              version = "0.0.0";
+              pname = meta.name;
+              version = meta.version;
               src = ./.;
               buildAndTestSubdir = dir;
               cargoLock.lockFile = ./Cargo.lock;
@@ -37,10 +40,10 @@
               ];
 
               passthru.docker = pkgs.dockerTools.buildImage {
-                name = crate;
+                name = meta.name;
                 config = {
                   Cmd = [
-                    "${self}/bin/${crate}"
+                    "${self}/bin/${meta.name}"
                   ];
                   ExposedPorts = ports;
                   Volumes = volumes;
@@ -51,31 +54,43 @@
           self;
 
         ciCargoFmt = pkgs.writeScriptBin "ci-cargo-fmt" ''
+          echo "🧹 running cargo fmt..."
           cargo fmt --check
         '';
 
         ciCargoClippy = pkgs.writeScriptBin "ci-cargo-clippy" ''
+          echo "🦄 running cargo clippy..."
           cargo clippy
         '';
 
-        ciLocal = pkgs.writeScriptBin "ci-local" ''
-          echo "Running cargo fmt..."
-          ci-cargo-fmt
+        mkCiBuildAndTagImage = { target }: pkgs.writeScriptBin "ci-build-${target}" ''
+          echo "🐋 building ${target} docker image..."
+          nix build .#${target}.docker
+          name=$(nix eval --raw .#${target}.docker.imageName)
+          tag=$(nix eval --raw .#${target}.docker.imageTag)
+          echo "📦 loading image $name:$tag"
+          docker load -q -i result
+          echo "🚢 image loaded"
+        '';
 
-          echo "Running cargo clippy..."
+        ciBuildAndTagCli = mkCiBuildAndTagImage { target = "ryogoku"; };
+        ciBuildAndTagOperator = mkCiBuildAndTagImage { target = "operator"; };
+
+        ciLocal = pkgs.writeScriptBin "ci-local" ''
+          ci-cargo-fmt
           ci-cargo-clippy
+          ci-build-ryogoku
+          ci-build-operator
         '';
       in
       {
         formatter = pkgs.nixpkgs-fmt;
         packages = {
           ryogoku = buildRustPackageWithDocker {
-            crate = "ryogoku";
             dir = "cli";
           };
 
           operator = buildRustPackageWithDocker {
-            crate = "ryogoku-operator";
             dir = "operator";
           };
         };
@@ -86,6 +101,8 @@
             # ci scripts
             ciCargoFmt
             ciCargoClippy
+            ciBuildAndTagCli
+            ciBuildAndTagOperator
             ciLocal
 
             # rust with source for lsp
