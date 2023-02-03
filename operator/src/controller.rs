@@ -161,7 +161,6 @@ impl Devnet {
         }
     }
 
-
     async fn cleanup(&self, ctx: Arc<Context>) -> Result<Action> {
         debug!("cleanup devnet");
         let ns = self.namespace().expect("devnet is namespaced");
@@ -174,8 +173,7 @@ impl Devnet {
                 namespace = self.metadata.namespace,
                 "No pod was found to delete, assuming there is nothing to do.",
             );
-        }
-        else {
+        } else {
             info!(
                 pod = self.name_any(),
                 namespace = self.metadata.namespace,
@@ -211,8 +209,8 @@ impl Devnet {
         };
         let labels = BTreeMap::from([
             ("app.kubernetes.io/name".to_string(), self.name_any()),
-            ("ryogoku.stark/devnet_name".to_string(), self.name_any())
-            ]);
+            ("ryogoku.stark/devnet_name".to_string(), self.name_any()),
+        ]);
 
         ObjectMeta {
             name: self.metadata.name.clone(),
@@ -283,7 +281,7 @@ impl Devnet {
                         container_port: 5050,
                         name: Some("gateway".to_string()),
                         ..ContainerPort::default()
-                    }
+                    },
                 ]),
                 ..Container::default()
             }],
@@ -308,22 +306,25 @@ impl Devnet {
         use apimachinery::pkg::util::intstr::IntOrString;
 
         ServiceSpec {
-            selector: Some(BTreeMap::from([
-                ("ryogoku.stark/devnet_name".to_string(), self.name_any())
-            ])),
+            selector: Some(BTreeMap::from([(
+                "ryogoku.stark/devnet_name".to_string(),
+                self.name_any(),
+            )])),
             type_: self.spec.service_type.clone(),
-            ports: Some(vec![ServicePort {
-                name: Some("rpc".to_string()),
-                port: 9575,
-                target_port: Some(IntOrString::String("rpc".to_string())),
-                ..ServicePort::default()
-            },
-            ServicePort {
-                name: Some("gateway".to_string()),
-                port: 5050,
-                target_port: Some(IntOrString::String("gateway".to_string())),
-                ..ServicePort::default()
-            }]),
+            ports: Some(vec![
+                ServicePort {
+                    name: Some("rpc".to_string()),
+                    port: 9575,
+                    target_port: Some(IntOrString::String("rpc".to_string())),
+                    ..ServicePort::default()
+                },
+                ServicePort {
+                    name: Some("gateway".to_string()),
+                    port: 5050,
+                    target_port: Some(IntOrString::String("gateway".to_string())),
+                    ..ServicePort::default()
+                },
+            ]),
             ..ServiceSpec::default()
         }
     }
